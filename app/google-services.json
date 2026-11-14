@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1079737438206",
+    "project_id": "cardshelp",
+    "storage_bucket": "cardshelp.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1079737438206:android:0b14280c94dc13cf7efaaf",
+        "android_client_info": {
+          "package_name": "com.bisswanger.cardshelp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA8pdJzZXxN8E3Zil-Yo2-BH8X-G1z8R9g"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
