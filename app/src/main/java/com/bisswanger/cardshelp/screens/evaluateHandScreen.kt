@@ -34,6 +34,16 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.text.style.TextAlign
 import com.bisswanger.cardshelp.data.Value
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.FileProvider
+import com.bisswanger.cardshelp.ai.GeminiCardReader
+import com.bisswanger.cardshelp.data.Card
+import kotlinx.coroutines.launch
+import java.io.File
 
 @Composable
 @RequiresApi(Build.VERSION_CODES.O)
@@ -42,17 +52,91 @@ fun EvaluateHandScreen(
     viewModel: evaluateHandViewModel,
     onOpenViewPastHands: () -> Unit
 ) {
-    var showTakePictureModel by remember {mutableStateOf(false)}
+
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var showPhotoMenu by remember { mutableStateOf(false) }
+    val testPhotos: List<String> = remember {
+        context.assets.list("test_hands")?.sorted().orEmpty()
+    }
+    var statusMessage by remember { mutableStateOf<String?>(null) }
+
+    // sends photos bytes to gemini and fills the dropdown
+    fun readCardsFrom(bytes: ByteArray) {
+        statusMessage = "Reading cards..."
+        scope.launch {
+            try {
+                // ask gemini for lebls and turn them into card objects
+                val cards = GeminiCardReader.readCards(bytes)
+                    .mapNotNull{ label -> Card.fromLabel(label) }
+
+                // clear old cards then fill dropdowns
+                viewModel.clearHand()
+                cards.take(5).forEachIndexed { i, card ->
+                    viewModel.updateSuit(i, card.suit)
+                    viewModel.updateValue(i, card.value)
+                }
+                statusMessage = "Found ${cards.size} cards"
+            } catch(e: Exception) {
+                statusMessage = "Couldn't read cards: ${e.message}"
+            }
+        }
+    }
+
+    // where the camera app saves the photo
+    val photoUri: Uri = remember {
+        val dir = File(context.cacheDir, "camera").apply { mkdirs() }
+        FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", File(dir, "hand.jpg"))
+    }
+
+    // opens the devices camera app
+    val takePhoto = rememberLauncherForActivityResult(
+        ActivityResultContracts.TakePicture()
+    ) { success: Boolean ->
+        if (success) {
+            // read the saved photos bytes and send to gemini
+            val bytes = context.contentResolver.openInputStream(photoUri)?.use { stream -> stream.readBytes()}
+
+            // delete the photo file right away
+            context.contentResolver.delete(photoUri, null, null)
+
+            if (bytes != null) {
+                readCardsFrom(bytes)
+            }
+        }
+    }
+
     Column(
         modifier = modifier
     ) {
         Row (
             modifier = modifier
         ) {
-            Button (
-                onClick = { showTakePictureModel = true }
-            ) {
+            Button (onClick = { takePhoto.launch(photoUri) }) {
                 Text("Take Picture")
+            }
+
+            // pick a test photo from assets/test_hands
+            Box {
+                Button(onClick = { showPhotoMenu = true }) {
+                    Text("Choose Photo")
+                }
+                DropdownMenu(
+                    expanded = showPhotoMenu,
+                    onDismissRequest = { showPhotoMenu = false }
+                ) {
+                    testPhotos.forEach { name: String ->
+                        DropdownMenuItem(
+                            text = { Text(name) },
+                            onClick = {
+                                showPhotoMenu = false
+                                // read the photos bytes and sends them to Gemini
+                                val bytes = context.assets.open("test_hands/$name").readBytes()
+                                readCardsFrom(bytes)
+                            }
+                        )
+                    }
+                }
             }
 
             Button (
@@ -61,13 +145,11 @@ fun EvaluateHandScreen(
                 Text("View Past Hands")
             }
         }
-        Text(if (showTakePictureModel) "True" else "False")
-        if (showTakePictureModel) {
-            TakePictureModal(
-                onDismiss = {showTakePictureModel = false},
-                onEvaluate = {}
-            )
-        }
+
+        // status messages under buttons
+        statusMessage?.let { message ->
+            Text(message, modifier = Modifier.padding(12.dp))}
+
         // give each card a unique entry, 5 total
         for (i in 0 until 5) {
 
